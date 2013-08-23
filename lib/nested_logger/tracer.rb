@@ -12,7 +12,7 @@ class NestedLogger::Tracer
     @extractor_regex = Regexp.new('(?:#<Class:|#<Module:)?(.*?)>?$')
     @logger = NestedLogger::Logger.new
     @missed_classes = []
-    @track_missing = false
+    @method_regex = Regexp.new('\.*([\w,_]*)(\(.*?\))(.*)')
     @name_regex = Regexp.new('(?:#<)?(.*?)(?:\:0x.*)?$')
     @quiet = false
 
@@ -22,6 +22,7 @@ class NestedLogger::Tracer
     @sourced_file = {}
 
     @trace_point ||= TracePoint.new { |tp| parse_trace(tp) }
+    @track_missing = false
 
   end
 
@@ -108,7 +109,7 @@ class NestedLogger::Tracer
 
   private
 
-  attr_reader :extractor_regex, :trace_point, :last_location, :logger, :missed_classes, :name_regex, :skip_bindings, :skip_classes, :sourced_file
+  attr_reader :extractor_regex, :trace_point, :last_location, :logger, :method_regex, :missed_classes, :name_regex, :skip_bindings, :skip_classes, :sourced_file
 
   def extracted_name(klass)
     klass_name = klass.inspect
@@ -167,8 +168,7 @@ class NestedLogger::Tracer
 
           method_name = prefix + tp.method_id.to_s
 
-          method_regexp = Regexp.new('\.*([\w,_]*)(\(.*?\))(.*)')
-          match = method_regexp.match(source_code(tp))
+          match = method_regex.match(source_code(tp))
 
           if match
             parameters = match[2]
@@ -184,11 +184,7 @@ class NestedLogger::Tracer
           log_locals(tp)
         when :return
           logger.depth -= 1
-          unless @exception
-            log_source(tp," -> #{tp.return_value.inspect}")
-          else
-            log("end -> #{@exception.inspect}")
-          end
+          @exception ? log_source(tp," -> #{tp.return_value.inspect}") : log("end -> #{@exception.inspect}")
           logger.depth -= 1
         when :raise
           @exception = tp.raised_exception
@@ -199,7 +195,7 @@ class NestedLogger::Tracer
           logger.depth += 1
         when :b_return
           logger.depth -= 1
-          log_source(tp," -> #{tp.return_value.inspect}")
+          @exception ? log_source(tp," -> #{tp.return_value.inspect}") : log("end -> #{@exception.inspect}")
           logger.depth -= 1
         when :c_call
           logger.depth += 1
@@ -208,7 +204,7 @@ class NestedLogger::Tracer
         #log_locals(tp)
         when :c_return
           logger.depth -= 1
-          log_source(tp, "-> #{tp.return_value.inspect}")
+          @exception ? log_source(tp," -> #{tp.return_value.inspect}") : log("end -> #{@exception.inspect}")
           logger.depth -= 1
         when :class
           logger.depth += 1
