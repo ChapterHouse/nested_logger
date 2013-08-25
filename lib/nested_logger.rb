@@ -8,26 +8,28 @@ module NestedLogger
     NestedLogger.without_tracing do
       name = name.to_s.to_sym
       parent = NestedLogger.tracer.uplevel(nil, 0)
-      value =
       begin
-        parent.variable(name)
+        log_nested "#{name} => #{parent.variable(name).inspect}"
       rescue NameError
-        'UNDEFINED'
+        log_nested "#{name} => <UNDEFINED>"
       end
-      log_nested "#{name} => #{value.inspect}"
     end
   end
 
   def log_nested(*messages)
-    NestedLogger.without_tracing { NestedLogger.tracer.log(*messages) }
+    NestedLogger.log(*messages)
   end
 
-  def self.tracer
-    @tracer ||= NestedLogger::Tracer.new
+  def nested_logger
+    NestedLogger
   end
 
-  def self.missed_classes
-    without_tracing { tracer.missed_classes }
+  def with_tracing(&block)
+    NestedLogger.with_tracing(&block)
+  end
+
+  def without_tracing(&block)
+    NestedLogger.without_tracing(&block)
   end
 
   def self.ignore(group)
@@ -42,12 +44,51 @@ module NestedLogger
     without_tracing { ignore 'core' }
   end
 
+  def self.ignore_defaults
+    ignore_core
+    ignore_stdlib
+    ignore_irb
+    ignore_bundler
+  end
+
+  def self.ignore_stdlib
+    without_tracing { ignore 'stdlib' }
+  end
+
+  def self.ignore_gem(name)
+    without_tracing { tracer.ignore_gem name }
+  end
+
   def self.ignore_irb
     without_tracing { ignore 'irb' }
   end
 
   def self.ignore_rails
     without_tracing { ignore 'rails' }
+  end
+
+  def self.log(*messages)
+    without_tracing { tracer.log(*messages) }
+  end
+
+  def self.log_to(io_or_logger_class)
+    tracer.log_to io_or_logger_class
+  end
+
+  def self.log_method=(method_name)
+    tracer.log_method = method_name
+  end
+
+  def self.prefix
+    tracer.prefix
+  end
+
+  def self.prefix?
+    tracer.prefix?
+  end
+
+  def self.prefix=(line_or_class_symbol)
+    tracer.prefix = line_or_class_symbol
   end
 
   def self.start
@@ -78,30 +119,14 @@ module NestedLogger
     end
   end
 
+  class << self
+    private
 
+    def tracer
+      @tracer ||= NestedLogger::Tracer.new
+    end
 
-  #def self.blah
-  #  RubyVM::DebugInspector.open { |dc|
-  #    # backtrace locations (returns an array of Thread::Backtrace::Location objects)
-  #    locs = dc.backtrace_locations
-  #
-  #    rc = []
-  #    # you can get depth of stack frame with `locs.size'
-  #    locs.each_with_index do |loc, i|
-  #      # binding of i-th caller frame (returns a Binding object or nil)
-  #      frame_class = dc.frame_class(i)
-  #      rc << [loc, dc.frame_binding(i), frame_class] unless frame_class == self || frame_class == internal_self || frame_class == Kernel
-  #    end
-  #    rc
-  #  }
-  #
-  #end
-
-  ignore_core
-  ignore_irb
-  ignore_bundler
-  ignore_rails
-  start
+  end
 
 end
 
