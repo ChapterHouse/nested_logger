@@ -1,4 +1,4 @@
-$: << File.join(__FILE__, 'lib')
+$: << File.join(__FILE__, '..', 'lib')
 require 'nested_logger'
 
 module B
@@ -74,8 +74,13 @@ class A
 
 end
 
+NestedLogger.ignore A
+NestedLogger.ignore 'C'
 
-#NestedLogger.start
+NestedLogger.ignore_core
+NestedLogger.prefix = :class
+NestedLogger.start
+
 
 x = 1
 puts 'umm'

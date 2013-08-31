@@ -5,15 +5,7 @@ module NestedLogger
 
 
   def lv(name)
-    NestedLogger.without_tracing do
-      name = name.to_s.to_sym
-      parent = NestedLogger.tracer.uplevel(nil, 0)
-      begin
-        log_nested "#{name} => #{parent.variable(name).inspect}"
-      rescue NameError
-        log_nested "#{name} => <UNDEFINED>"
-      end
-    end
+    NestedLogger.lv(name)
   end
 
   def log_nested(*messages)
@@ -40,6 +32,14 @@ module NestedLogger
     without_tracing { ignore 'bundler' }
   end
 
+  def self.ignore_class(class_or_name)
+    without_tracing { tracer.ignore_class class_or_name }
+  end
+
+  def self.ignore_class_group(name)
+    without_tracing { tracer.ignore_class_group(name) }
+  end
+
   def self.ignore_core
     without_tracing { ignore 'core' }
   end
@@ -51,8 +51,8 @@ module NestedLogger
     ignore_bundler
   end
 
-  def self.ignore_stdlib
-    without_tracing { ignore 'stdlib' }
+  def self.ignore_file_group(name)
+    without_tracing { tracer.ignore_file_group(name) }
   end
 
   def self.ignore_gem(name)
@@ -67,6 +67,10 @@ module NestedLogger
     without_tracing { ignore 'rails' }
   end
 
+  def self.ignore_stdlib
+    without_tracing { ignore 'stdlib' }
+  end
+
   def self.log(*messages)
     without_tracing { tracer.log(*messages) }
   end
@@ -77,6 +81,18 @@ module NestedLogger
 
   def self.log_method=(method_name)
     tracer.log_method = method_name
+  end
+
+  def self.lv(name)
+    without_tracing do
+      name = name.to_s.to_sym
+      parent = tracer.uplevel(nil, 0)
+      begin
+        log "#{name} => #{parent.variable(name).inspect}"
+      rescue NameError
+        log "#{name} => <UNDEFINED>"
+      end
+    end
   end
 
   def self.prefix
@@ -120,7 +136,7 @@ module NestedLogger
   end
 
   class << self
-    private
+    protected
 
     def tracer
       @tracer ||= NestedLogger::Tracer.new
@@ -130,3 +146,6 @@ module NestedLogger
 
 end
 
+ENV['NESTED_LOGGER_IGNORE'].to_s.split(',').each { |item| NestedLogger.ignore item.strip }
+NestedLogger.prefix = ENV['NESTED_LOGGER_PREFIX'].to_s.to_sym if ENV['NESTED_LOGGER_PREFIX']
+NestedLogger.start if ENV['NESTED_LOGGER_AUTOSTART'].to_s.downcase == "true"

@@ -1,5 +1,6 @@
 require 'nested_logger/logger'
 require 'nested_logger/binding'
+require 'set'
 require 'active_support/all'
 require 'pathname'
 require 'debug_inspector'
@@ -12,6 +13,10 @@ class NestedLogger::Tracer
   def initialize
 
     @extractor_regex = Regexp.new('(?:#<Class:|#<Module:)?(.*?)>?$')
+
+    @included_classes = [].to_set
+
+
     @logger = NestedLogger::Logger.new
     @missed_classes = []
     @method_regex = Regexp.new('\.*([\w,_]*)(\(.*?\))(.*)')
@@ -20,11 +25,10 @@ class NestedLogger::Tracer
     @prefix = false
     @quiet = false
 
-    @skip_bindings = ['RubyVM::DebugInspector', 'NestedLogger', 'NestedLogger::Tracer', 'NestedLogger:Logger', 'Kernel']
-    @skip_classes = [nil, '', 'RubyVM::DebugInspector', 'NestedLogger', 'NestedLogger::Tracer', 'NestedLogger:Logger', 'nil']
-    @skip_files = []
-    @skip_directories = []
-
+    @skip_bindings = ['RubyVM::DebugInspector', 'NestedLogger', 'NestedLogger::Tracer', 'NestedLogger:Logger', 'Kernel'].to_set
+    @skip_classes = [nil, '', 'RubyVM::DebugInspector', 'NestedLogger', 'NestedLogger::Tracer', 'NestedLogger:Logger', 'nil'].to_set
+    @skip_files = [].to_set
+    @skip_directories = [].to_set
 
     @sourced_file = {}
 
@@ -61,13 +65,36 @@ class NestedLogger::Tracer
 
   end
 
-  def ignore(group)
-    ignore_class_group group
-    ignore_file_group group
+  def ignore(class_or_group)
+    if class_or_group.is_a?(Module)
+      ignore_class class_or_group
+    else
+      begin
+
+        ignore_class_group class_or_group
+      rescue Errno::ENOENT
+        ignore_class class_or_group
+      else
+        ignore_file_group class_or_group
+      end
+    end
+  end
+
+  def ignore_class(class_or_name)
+    if class_or_name.is_a?(Module)
+      klass = class_or_name
+      class_name = klass.name
+    else
+      class_name = class_or_name.to_s.strip
+      # Do the check first so we don't trigger the auto constant loading of Rails.
+      klass = Object.const_defined?(class_name) ? Object.const_get(class_name) : nil rescue nil
+    end
+    initialize_class_accessor(klass, true) if klass
+    skip_classes << class_name
   end
 
   def ignore_class_group(group)
-    group_file(group, 'class').each_line { |name| skip_class(name) unless name[0] == '#' }
+    group_file(group, 'class').each_line { |name| ignore_class(name) unless name[0] == '#' }
   end
 
   def ignore_file_group(group)
@@ -97,19 +124,12 @@ class NestedLogger::Tracer
     @quiet = !!x
   end
 
-  def skip_class(klass_name)
-    skip_classes << klass_name.strip
-    skip_classes.uniq!
-  end
-
   def skip_directory(directory_name)
     skip_directories << directory_name.strip
-    skip_directories.uniq!
   end
 
   def skip_file(file_name)
     skip_files << file_name.strip
-    skip_files.uniq!
   end
 
   def start
@@ -173,12 +193,12 @@ class NestedLogger::Tracer
   private
 
   attr_reader :extractor_regex, :trace_point, :last_location, :logger, :method_regex, :missed_classes,
-              :name_regex, :skip_bindings, :skip_classes, :skip_directories, :skip_files, :sourced_file
+              :name_regex, :skip_bindings, :skip_classes, :skip_directories, :skip_files, :sourced_file,
+              :included_classes
 
   def class_skipped?(tp)
-    klass = tp.defined_class
-    if klass != Object
-      if klass.nil?
+    if tp.defined_class != Object
+      if tp.defined_class.nil?
         if tp.event == :line
           source = source_code(tp)
           source.starts_with?('def ') || source.starts_with?('module ') || source.starts_with?('class ') || source.starts_with?('include ')
@@ -186,10 +206,21 @@ class NestedLogger::Tracer
           true
         end
       else
-        klass_name = extracted_name(klass)
-        klass_name.starts_with?("0x0") || skip_classes.include?(klass_name)
+        initialize_class_accessor(tp.defined_class) if !tp.defined_class.respond_to?(:nested_logger_skip) || tp.defined_class.nested_logger_skip.nil?
+        tp.defined_class.nested_logger_skip
       end
     end
+  end
+
+  def initialize_class_accessor(klass, initial_value=nil)
+    class << klass
+      attr_accessor :nested_logger_skip
+    end
+    if initial_value.nil?
+      klass_name = extracted_name(klass)
+      initial_value = klass_name.starts_with?("0x0") || skip_classes.include?(klass_name)
+    end
+    klass.nested_logger_skip = initial_value
   end
 
   def directory_skipped?(tp)
@@ -229,18 +260,22 @@ class NestedLogger::Tracer
     log "#{log_prefix(tp)}#{key} => #{locals[key].inspect}" }
   end
 
+  def local_code?(tp)
+    tp.path.start_with?(local_path)
+  end
+
+  def local_path
+    File.expand_path(Dir.pwd)
+  end
+
   def log_prefix(tp)
     if prefix?
       if prefix == :class
         pfx = tp.defined_class ? tp.defined_class.inspect : ''
       else
-        pfx = tp.path
-        local_directory = Pathname.new(Dir.pwd).expand_path
-        pfx = pfx[local_directory.to_s.size+1..-1] if pfx.start_with?(local_directory.to_s)
-        pfx += ":#{tp.lineno}"
+        pfx = "#{local_code?(tp) ? tp.path[local_path.size+1..-1]: tp.path}:#{tp.lineno}"
       end
-
-      pfx = "...#{pfx[-57..-1]}" if pfx.size > 60
+      # Your here, improving this and working on the inclusion principal
 
       '%-60s |' % [pfx]
 
@@ -328,6 +363,7 @@ class NestedLogger::Tracer
         when :c_return
           #log_return tp
         when :class
+
         #  logger.depth += 1
         #  log_source tp
         ##logger.depth += 1
