@@ -3,7 +3,6 @@ require 'nested_logger/tracer'
 
 module NestedLogger
 
-
   def lv(name)
     NestedLogger.lv(name)
   end

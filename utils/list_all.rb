@@ -1,4 +1,4 @@
-\def list_all(klass, depth=0)
+def list_all(klass, depth=0)
   @seenit = [] if depth == 0
   unless @seenit.include?(klass)
     @seenit << klass
@@ -16,8 +16,8 @@
   end
 end
 
-def clean_module_array(array_of_modules)
-  #puts "clean_module_array(#{array_of_modules.inspect})"
+def clean_module_array!(array_of_modules)
+  #puts "clean_module_array!(#{array_of_modules.inspect})"
   array_of_modules.flatten!
   array_of_modules.compact!
   array_of_modules.delete_if { |x| x.respond_to?(:name) && x.name.nil? }
@@ -29,7 +29,7 @@ end
 libs = []
 
 puts "Loading core_pure Modules."
-known_modules = File.readlines('lib/class_groups/core_pure').delete_if { |x| x[0] == '#' }.map { |x| Object.const_get(x.strip) }
+known_modules = File.readlines('../lib/class_groups/core_pure').delete_if { |x| x[0] == '#' }.map { |x| Object.const_get(x.strip) }
 
 puts 'Requiring libraries.'
 libs.each do |lib|
@@ -45,20 +45,20 @@ ObjectSpace.each_object(Module) do |x|
       new_modules << x
     end
     known_modules << x
-    #clean_module_array(known_modules)
+    #clean_module_array!(known_modules)
   end
 end
 
-clean_module_array(known_modules)
-clean_module_array(new_modules)
+clean_module_array!(known_modules)
+clean_module_array!(new_modules)
 puts "#{new_modules.size} new modules found."
 
 puts 'Traversing new modules.'
 full_list = new_modules.dup
 full_list.map! { |x| list_all(x) }
-clean_module_array(full_list)
+clean_module_array!(full_list)
 puts "#{full_list.size} total new modules found."
 
 puts "Saving."
-File.open('new_modules.txt', 'w') { |f| f.puts full_list.join("\n") }
+#File.open('new_modules.txt', 'w') { |f| f.puts full_list.join("\n") }
 #File.open('known_modules.txt', 'w') { |f| f.puts known_modules.map { |x| x.inspect }.join("\n") }

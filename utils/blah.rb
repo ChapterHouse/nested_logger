@@ -74,12 +74,13 @@ class A
 
 end
 
-NestedLogger.ignore A
-NestedLogger.ignore 'C'
+#NestedLogger.ignore A
+#NestedLogger.ignore 'C'
 
-NestedLogger.ignore_core
-NestedLogger.prefix = :class
+#NestedLogger.ignore_core
+#NestedLogger.prefix = :class
 NestedLogger.start
+include NestedLogger
 
 
 x = 1
@@ -92,17 +93,16 @@ a.e { |b| 3 + b }
 z = a.f
 x + z
 
-include NestedLogger
-#
+
 def aaa(x)
   x += 123
 end
 
 m = aaa(123)
-
-x = caller
-puts caller.inspect
-
-aaa = 123
+#
+#x = caller
+#puts caller.inspect
+#
+#aaa = 123
 #puts defined?("$aaa".to_sym)
 #puts defined?(:aaa)

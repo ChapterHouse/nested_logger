@@ -17,7 +17,7 @@ def list_all(klass, depth=0)
 end
 
 
-def clean_module_array(array_of_modules)
+def clean_module_array!(array_of_modules)
   array_of_modules.flatten!
   array_of_modules.compact!
   array_of_modules.delete_if { |x| x.respond_to?(:name) && x.name.nil? }
@@ -28,7 +28,7 @@ end
 
 a = list_all(Object)
 b = a.map { |x| list_all(Object.const_get(x)) }
-clean_module_array(b)
+clean_module_array!(b)
 puts a == b
 puts b - a
 exit
@@ -36,9 +36,9 @@ exit
 puts 'Recording known Modules.'
 known_modules = []
 ObjectSpace.each_object(Module) { |x| known_modules << x if x.is_a?(Module) }
-clean_module_array(known_modules)
+clean_module_array!(known_modules)
 known_modules.map! { |x| list_all(x) }
-clean_module_array(known_modules)
+clean_module_array!(known_modules)
 
 
 #known_modules.map! { |x| x.name.sub('.class', '') }
@@ -49,7 +49,7 @@ known_modules.delete('ARGF.class')
 known_modules.delete('Addrinfo')
 known_modules.delete('BasicSocket')
 known_modules.unshift 'ARGF'
-clean_module_array(known_modules)
+clean_module_array!(known_modules)
 
 
 

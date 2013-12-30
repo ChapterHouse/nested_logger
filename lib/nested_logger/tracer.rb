@@ -7,7 +7,7 @@ require 'debug_inspector'
 
 class NestedLogger::Tracer
 
-  attr_reader :quiet, :track_missing
+  attr_reader :filter, :quiet
   attr_accessor :prefix
 
   def initialize
@@ -22,6 +22,7 @@ class NestedLogger::Tracer
     @method_regex = Regexp.new('\.*([\w,_]*)(\(.*?\))(.*)')
     @name_regex = Regexp.new('(?:#<)?(.*?)(?:\:0x.*)?$')
 
+    @filter = :exclusive
     @prefix = false
     @quiet = false
 
@@ -33,8 +34,17 @@ class NestedLogger::Tracer
     @sourced_file = {}
 
     @trace_point ||= TracePoint.new { |tp| parse_trace(tp) }
-    @track_missing = false
 
+  end
+
+  def filter=(style)
+    style = style.to_s.to_sym
+    if style != :include || style != :exclude
+      $stderr.write "Invalid filter style #{style}. Value must be either :include or :exclude\n"
+    else
+      @filter = style
+    end
+    @filter
   end
 
   def ignore_gem(name, skip_dependencies=true)
@@ -113,9 +123,6 @@ class NestedLogger::Tracer
     logger.log_method = method_name
   end
 
-  #def missing_only=(x)
-  #  @missing_only = !!x
-  #end
   def prefix?
     !!@prefix
   end
@@ -304,14 +311,6 @@ class NestedLogger::Tracer
   end
 
   def parse_trace(tp)
-
-    #if track_missing && !skipped?(tp)
-    #  klass_name = extracted_name(tp.defined_class)
-    #  unless missed_classes.include?(klass_name)
-    #    $stdout.write("Missed: #{klass_name.inspect}\n")
-    #    missed_classes << klass_name
-    #  end
-    #end
 
     unless quiet || skipped?(tp)
 
